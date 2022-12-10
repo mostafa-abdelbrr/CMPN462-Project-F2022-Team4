@@ -17,8 +17,8 @@ class sensor_incorporation:
         self.front_sub = message_filters.Subscriber('/robot/front_laser/scan', LaserScan)
         self.back_sub = message_filters.Subscriber('/robot/rear_laser/scan', LaserScan)
         self.odom_sub = message_filters.Subscriber('/robot/robotnik_base_control/odom', Odometry)
-        self.sensor_topic = rospy.Publisher('/sensors_topic', incorporated_sensor_data, queue_size=10)
-        # self.timesynced = message_filters.ApproximateTimeSynchronizer([self.front_sub, self.back_sub, self.odom_sub], queue_size=10, slop=0.01)
+        # self.sensor_topic = rospy.Publisher('/sensors_topic', incorporated_sensor_data, queue_size=10)
+        self.timesynced = message_filters.ApproximateTimeSynchronizer([self.front_sub, self.back_sub, self.odom_sub], queue_size=10, slop=0.001)
         self.timesynced = message_filters.TimeSynchronizer([self.front_sub, self.back_sub, self.odom_sub], queue_size=10)
         self.timesynced.registerCallback(self.merge)
         self.merged = incorporated_sensor_data
