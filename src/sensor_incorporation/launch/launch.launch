@@ -1,0 +1,3 @@
+<launch>
+<node pkg="sensor_incorporation" type="merger.py" name="sensor_incorporation" output="screen"></node>
+</launch>
