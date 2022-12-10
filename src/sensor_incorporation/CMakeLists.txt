@@ -111,9 +111,9 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES sensor_incorporation
-#  CATKIN_DEPENDS message_filters nav_msgs rospy sensor_msgs std_msgs
-#  DEPENDS system_lib
+  LIBRARIES sensor_incorporation
+  CATKIN_DEPENDS message_filters nav_msgs rospy sensor_msgs std_msgs
+  DEPENDS system_lib
 )
 
 ###########
