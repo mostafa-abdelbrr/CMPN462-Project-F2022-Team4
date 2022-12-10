@@ -30,8 +30,8 @@ class sensor_incorporation:
         merged.angle_increment = 0.5 * math.pi / 180
         merged.time_increment = front_measurements.time_increment
         merged.scan_time = front_measurements.scan_time
-        merged.range_min = min(front_measurements.range_min, rear_measurements.range_min)
-        merged.range_max = max(front_measurements.range_max, rear_measurements.range_max)
+        merged.range_min = max(front_measurements.range_min, rear_measurements.range_min)
+        merged.range_max = min(front_measurements.range_max, rear_measurements.range_max)
         
         
         merged.ranges = [0]*round(360/0.5)
@@ -39,7 +39,10 @@ class sensor_incorporation:
         # Front measurements:
         for index in range(len(front_measurements.ranges)):
             angle = front_measurements.angle_min + index*front_measurements.angle_increment
-            self.angles[angle] = front_measurements.ranges[index]
+            if front_measurements.ranges[index] < front_measurements.range_min and front_measurements.ranges[index] > front_measurements.range_max:
+                self.angles[angle] = front_measurements.ranges[index]
+            else:
+                self.angles[angles] = -1
 
         # Rear measurements:
         for index in range(len(rear_measurements.ranges)):
@@ -47,7 +50,10 @@ class sensor_incorporation:
             if angle > math.pi:
                 angle -= 2 * math.pi
             if angle not in self.angles:
-                self.angles[angle] = rear_measurements.ranges[index]
+                if rear_measurements.ranges[index] < rear_measurements.range_min and rear_measurements.ranges[index] > rear_measurements.range_max:
+                    self.angles[angle] = rear_measurements.ranges[index]
+                else:
+                    self.angles[angle] = -1
 
         print(self.angles)
         for angle in self.angles:
