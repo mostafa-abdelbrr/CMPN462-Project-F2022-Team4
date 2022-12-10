@@ -55,7 +55,6 @@ class sensor_incorporation:
                 else:
                     self.angles[angle] = -1
 
-        print(self.angles)
         for angle in self.angles:
             index = round((angle - merged.angle_min)/merged.angle_increment)
             merged.ranges[index] = self.angles[angle]
