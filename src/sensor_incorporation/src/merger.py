@@ -63,7 +63,7 @@ class sensor_incorporation:
         merged.twist = odom_measurements.twist
         self.merged = merged
         self.sensor_topic.publish(self.merged)
-        print('msg sent')
+        # print('msg sent')
 
     
 
