@@ -39,7 +39,7 @@ class sensor_incorporation:
         # Front measurements:
         for index in range(len(front_measurements.ranges)):
             angle = front_measurements.angle_min + index*front_measurements.angle_increment
-            if front_measurements.ranges[index] < front_measurements.range_min and front_measurements.ranges[index] > front_measurements.range_max:
+            if front_measurements.ranges[index] > front_measurements.range_min and front_measurements.ranges[index] < front_measurements.range_max:
                 self.angles[angle] = front_measurements.ranges[index]
             else:
                 self.angles[angle] = -1
@@ -50,7 +50,7 @@ class sensor_incorporation:
             if angle > math.pi:
                 angle -= 2 * math.pi
             if angle not in self.angles:
-                if rear_measurements.ranges[index] < rear_measurements.range_min and rear_measurements.ranges[index] > rear_measurements.range_max:
+                if rear_measurements.ranges[index] > rear_measurements.range_min and rear_measurements.ranges[index] < rear_measurements.range_max:
                     self.angles[angle] = rear_measurements.ranges[index]
                 else:
                     self.angles[angle] = -1
