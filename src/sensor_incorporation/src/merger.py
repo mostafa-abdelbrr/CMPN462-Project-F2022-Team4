@@ -19,12 +19,12 @@ class sensor_incorporation:
         self.odom_sub = message_filters.Subscriber('/robot/robotnik_base_control/odom', Odometry)
         self.sensor_topic = rospy.Publisher('/sensors_topic', incorporated_sensor_data, queue_size=10)
         self.timesynced = message_filters.ApproximateTimeSynchronizer([self.front_sub, self.back_sub, self.odom_sub], queue_size=10, slop=0.001)
-        self.timesynced = message_filters.TimeSynchronizer([self.front_sub, self.back_sub, self.odom_sub], queue_size=10)
+        # self.timesynced = message_filters.TimeSynchronizer([self.front_sub, self.back_sub, self.odom_sub], queue_size=10)
         self.timesynced.registerCallback(self.merge)
         self.merged = incorporated_sensor_data
 
     def merge(self, front_measurements, rear_measurements, odom_measurements):
-        merged = incorporated_sensor_data
+        merged = incorporated_sensor_data()
         merged.angle_min = - math.pi
         merged.angle_max = math.pi
         merged.angle_increment = 0.5 * math.pi / 180
@@ -42,7 +42,7 @@ class sensor_incorporation:
             if front_measurements.ranges[index] < front_measurements.range_min and front_measurements.ranges[index] > front_measurements.range_max:
                 self.angles[angle] = front_measurements.ranges[index]
             else:
-                self.angles[angles] = -1
+                self.angles[angle] = -1
 
         # Rear measurements:
         for index in range(len(rear_measurements.ranges)):
