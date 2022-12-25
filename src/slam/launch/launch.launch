@@ -1,3 +1,5 @@
 <launch>
-<node pkg="sensor_incorporation" type="merger.py" name="sensor_incorporation" output="screen"></node>
+<node pkg="slam" type="merger.py" name="sensor_incorporation" output="screen"></node>
+<node pkg="slam" type="mapping.py" name="mapper" output="screen"></node>
+<node pkg="slam" type="move.py" name="move_controller" output="screen"></node>
 </launch>
