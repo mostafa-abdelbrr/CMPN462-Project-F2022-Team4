@@ -4,7 +4,7 @@ import rospy
 import message_filters
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
-from sensor_incorporation.msg import incorporated_sensor_data
+from slam.msg import incorporated_sensor_data
 import math
 
 # front_measurements: point_cloud2
