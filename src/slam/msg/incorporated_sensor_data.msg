@@ -1,7 +1,7 @@
 Header header
 # sensor_msgs/LaserScan laser
 # nav_msgs/Odometry odometry
-
+string frame_id
 
 float32 angle_min        # start angle of the scan [rad]
 float32 angle_max        # end angle of the scan [rad]
