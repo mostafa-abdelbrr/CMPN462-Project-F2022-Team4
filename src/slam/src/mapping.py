@@ -72,9 +72,11 @@ class Prob_Map:
         map_rows = int(map_height)
         map_cols = int(map_width)
         self.gridmap = self.p_lo * np.ones((map_rows, map_cols))
-        self.laser_reading = rospy.Subscriber(
-            "/sensors_topic", incorporated_sensor_data, self.sensor_data, queue_size=1
-        )
+        self.laser_reading = rospy.Subscriber("/sensors_topic", incorporated_sensor_data, self.sensor_data, queue_size=1)
+        self.x = 0
+        self.y = 0
+        self.theta = 0
+        self.last_time_stamp = 0
         print("initialize")
 
     def is_inside(self, i, j):
@@ -154,7 +156,10 @@ class Prob_Map:
         yaw = math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
         return yaw
 
-    def slam_prediction(self, index, x, y, theta, v, w, t):
+    def slam_prediction(self, index, v, w, t):
+        x = self.mu[index][0]
+        y = self.mu[index][1]
+        theta = self.mu[index][2]
         x_new = x + ((-v / w) * math.sin(theta) + (v / w) * math.sin(theta + w * t))
         y_new = y + ((v / w) * math.cos(theta) - (v / w) * math.cos(theta + w * t))
         theta_new = theta + w * t
@@ -201,6 +206,7 @@ class Prob_Map:
 
     def slam_correction(self, index, reading, reading_angle):
         Q_t = 0.1 * np.identity(3)
+        reading_angle = normalize_angle(reading_angle)
         new_mu_x = self.mu[index][0] + reading * math.cos(reading_angle + self.mu[index][2])
         new_mu_y = self.mu[index][1] + reading * math.sin(reading_angle + self.mu[index][2])
         S = np.matrix([[new_mu_x - self.mu[index][0]], [new_mu_y - self.mu[index][0]]])
@@ -212,7 +218,7 @@ class Prob_Map:
         S_t = np.matmul(np.matmul(H, self.sigma[index]), H.T) + Q_t
         K_t = np.matmul(self.sigma[index], H.T, np.linalg.inv(S_t))
         # TODO: Fix z hat/expected.
-        z_expected = np.atleast_2d([[reading], [reading_angle]])
+        z_expected = np.atleast_2d([[reading], [normalize_angle(reading_angle)]])
         z_error = z_t - z_expected
         self.mu[index] += np.matmul(K_t, z_error)
         self.weight[index] = (np.linalg.norm(2 * np.pi * S_t) ** 0.5) * np.exp(-0.5 * np.matmul(np.matmul(np.atleast_2d(z_error).T, np.linalg.inv(S_t)), z_error))
@@ -232,15 +238,17 @@ class Prob_Map:
         # print("global ", flag)
         readings = msg.ranges
         # print("reading",readings)
-        x_odom = msg.pose.pose.position.x
-        y_odom = msg.pose.pose.position.y
-        orientation_odom = msg.pose.pose.orientation
-        yaw = self.quart_to_yaw(
-            orientation_odom.x,
-            orientation_odom.y,
-            orientation_odom.z,
-            orientation_odom.w,
-        )
+        
+        # x_odom = msg.pose.pose.position.x
+        # y_odom = msg.pose.pose.position.y
+        # orientation_odom = msg.pose.pose.orientation
+        # yaw = self.quart_to_yaw(
+        #     orientation_odom.x,
+        #     orientation_odom.y,
+        #     orientation_odom.z,
+        #     orientation_odom.w,
+        # )
+        yaw = normalize_angle(self.theta)
         i = 0
 
         # rospy.sleep(20.)
@@ -253,19 +261,37 @@ class Prob_Map:
                 if r < msg.range_min:
                     r = msg.range_min
                 # r =msg.range_max if r>msg.range_max
-                angle = -yaw + i * msg.angle_increment + math.pi / 2
+                # angle = -yaw + i * msg.angle_increment + math.pi / 2
+                
+                # v = msg.twist.twist.linear
+                # w = msg.twist.twist.angular
+                # t = msg.header.stamp
+                # self.slam_prediction(i, v, w, t)
+                # self.slam_correction(i, r, i * msg.angle_increment)
+                
+                # x_map0 = int(y_odom / map_resolution + map_height / 2)
+                # y_map0 = int(x_odom / map_resolution + map_width / 2)
+                # dist_x = -y_odom + r * math.cos(angle)
+                # dist_y = -x_odom + r * math.sin(angle)
+                # x_map1 = int(dist_y / map_resolution + map_height / 2)
+                # y_map1 = int(-dist_x / map_resolution + map_width / 2)
+                # cell_no = int(r / map_resolution)  # no of cells ray is passing through
+                
                 
                 v = msg.twist.twist.linear
                 w = msg.twist.twist.angular
-                t = msg.header.stamp
+                t = msg.header.stamp - self.last_time_stamp
+                self.last_time_stamp = msg.header.stamp
                 # TODO: Fix passing proper x, y, and t and in correction need to pass proper angle.
-                self.slam_prediction(i, x_odom, y_odom, - yaw, v, w, t)
+                self.slam_prediction(i, v, w, t)
                 self.slam_correction(i, r, i * msg.angle_increment)
-                
-                x_map0 = int(y_odom / map_resolution + map_height / 2)
-                y_map0 = int(x_odom / map_resolution + map_width / 2)
-                dist_x = -y_odom + r * math.cos(angle)
-                dist_y = -x_odom + r * math.sin(angle)
+                x = self.mu[self.best_weight_index][0]
+                y = self.mu[self.best_weight_index][1]
+                angle = -self.mu[self.best_weight_index][2] + i * msg.angle_increment + math.pi / 2
+                x_map0 = int(y / map_resolution + map_height / 2)
+                y_map0 = int(x / map_resolution + map_width / 2)
+                dist_x = -y + r * math.cos(angle)
+                dist_y = -x + r * math.sin(angle)
                 x_map1 = int(dist_y / map_resolution + map_height / 2)
                 y_map1 = int(-dist_x / map_resolution + map_width / 2)
                 cell_no = int(r / map_resolution)  # no of cells ray is passing through
