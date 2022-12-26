@@ -39,6 +39,16 @@ occupancy_msg.info.origin.position.y = map_y
 
 print("after start")
 
+def normalize_angle(angle):
+    """Normalize the angle between -pi and pi"""
+
+    while angle > math.pi:
+        angle = angle - 2. * math.pi
+
+    while angle < - math.pi:
+        angle = angle + 2. * math.pi
+
+    return angle
 
 class Prob_Map:
     def __init__(
@@ -54,6 +64,11 @@ class Prob_Map:
         self.p_free = np.log(0.3 / (1 - 0.3))
         self.p_lo = np.log(0.5 / (1 - 0.5))
         self.isD = False
+        self.mu = np.zeros((360, 3))
+        self.sigma = np.zeros((360, 3, 3))
+        self.weight = (1/360) * np.ones(360)
+        self.best_weight_index = -1
+        self.best_weight = math.inf
         map_rows = int(map_height)
         map_cols = int(map_width)
         self.gridmap = self.p_lo * np.ones((map_rows, map_cols))
@@ -139,6 +154,72 @@ class Prob_Map:
         yaw = math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
         return yaw
 
+    def slam_prediction(self, index, x, y, theta, v, w, t):
+        x_new = x + ((-v / w) * math.sin(theta) + (v / w) * math.sin(theta + w * t))
+        y_new = y + ((v / w) * math.cos(theta) - (v / w) * math.cos(theta + w * t))
+        theta_new = theta + w * t
+
+        self.mu[index] = [x_new, y_new, theta_new]
+
+        # partial derivative?? for V matrix
+        V = np.matrix([
+            [
+                (-math.sin(theta) + math.sin(t * w + theta)) / w,
+                (
+                    v
+                    * (
+                        t * w * math.cos(theta + t * w)
+                        + math.sin(theta)
+                        - math.sin(t * w + theta)
+                    )
+                    / w
+                ),
+            ],
+            [
+                (math.cos(theta) + math.cos(t * w + theta)) / w,
+                (
+                    v
+                    * (
+                        t * w * math.sin(theta + t * w)
+                        - math.cos(theta)
+                        + math.cos(t * w + theta)
+                    )
+                    / w
+                ),
+            ],
+            [0, t],
+        ])
+        M = 0.1 * np.identity(2)
+        G = np.matrix([
+            [1, 0, (v * math.cos(theta + w * t) - v * math.cos(theta)) / w],
+            [0, 1, (v * (math.sin(theta + w * t) - v * math.sin(theta))) / w],
+            [0, 0, 1],
+        ])
+        self.sigma[index] = np.matmul(np.matmul(G, self.sigma[index]), np.transpose(G)) + np.matmul(
+            np.matmul(V, M), np.transpose(V)
+        )
+
+    def slam_correction(self, index, reading, reading_angle):
+        Q_t = 0.1 * np.identity(3)
+        new_mu_x = self.mu[index][0] + reading * math.cos(reading_angle + self.mu[index][2])
+        new_mu_y = self.mu[index][1] + reading * math.sin(reading_angle + self.mu[index][2])
+        S = np.matrix([[new_mu_x - self.mu[index][0]], [new_mu_y - self.mu[index][0]]])
+        q = np.matmul(S.T, S)
+        z_t = np.matrix([[math.sqrt(q)], [math.atan2(S[1], S[0]) - self.mu[index][2]]])
+        # TODO: Add H.
+        # H Weird 2x5 matrix
+        H = np.ones(2, 3)
+        S_t = np.matmul(np.matmul(H, self.sigma[index]), H.T) + Q_t
+        K_t = np.matmul(self.sigma[index], H.T, np.linalg.inv(S_t))
+        # TODO: Fix z hat/expected.
+        z_expected = np.atleast_2d([[reading], [reading_angle]])
+        z_error = z_t - z_expected
+        self.mu[index] += np.matmul(K_t, z_error)
+        self.weight[index] = (np.linalg.norm(2 * np.pi * S_t) ** 0.5) * np.exp(-0.5 * np.matmul(np.matmul(np.atleast_2d(z_error).T, np.linalg.inv(S_t)), z_error))
+        if self.weight < self.best_weight:
+            self.best_weight = self.weight
+            self.best_weight_index = index
+
     # flag=0
     def sensor_data(self, msg):
         # global flag
@@ -173,7 +254,14 @@ class Prob_Map:
                     r = msg.range_min
                 # r =msg.range_max if r>msg.range_max
                 angle = -yaw + i * msg.angle_increment + math.pi / 2
-
+                
+                v = msg.twist.twist.linear
+                w = msg.twist.twist.angular
+                t = msg.header.stamp
+                # TODO: Fix passing proper x, y, and t and in correction need to pass proper angle.
+                self.slam_prediction(i, x_odom, y_odom, - yaw, v, w, t)
+                self.slam_correction(i, r, i * msg.angle_increment)
+                
                 x_map0 = int(y_odom / map_resolution + map_height / 2)
                 y_map0 = int(x_odom / map_resolution + map_width / 2)
                 dist_x = -y_odom + r * math.cos(angle)
