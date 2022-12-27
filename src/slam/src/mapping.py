@@ -64,8 +64,8 @@ class Prob_Map:
         self.p_free = np.log(0.3 / (1 - 0.3))
         self.p_lo = np.log(0.5 / (1 - 0.5))
         self.isD = False
-        self.mu = np.zeros((360, 3))
-        self.sigma = np.zeros((360, 3, 3))
+        self.mu = np.zeros((360, 3, 1))
+        self.sigma = np.ones((360, 3, 3))*10000
         self.weight = (1/360) * np.ones(360)
         self.best_weight_index = -1
         self.best_weight = math.inf
@@ -78,6 +78,7 @@ class Prob_Map:
         self.theta = 0
         self.last_time_stamp = 0
         print("initialize")
+        print(self.mu[0,0,0])
 
     def is_inside(self, i, j):
         # print('INSIDE is_inside function:\n', i, map_width, j, map_height, i<map_width and j<map_height and i>=0 and j>=0)
@@ -157,14 +158,27 @@ class Prob_Map:
         return yaw
 
     def slam_prediction(self, index, v, w, t):
-        x = self.mu[index][0]
-        y = self.mu[index][1]
-        theta = self.mu[index][2]
-        x_new = x + ((-v / w) * math.sin(theta) + (v / w) * math.sin(theta + w * t))
+        x = self.mu[index,0,0]
+        y = self.mu[index,1,0]
+        theta = self.mu[index,2,0]
+        # print(type(v))
+        if v == 0:
+            v = 10**-8
+        if w == 0:
+            w = 10**-8
+        # v_dummy = np.array([v[0]*-1,v[1]*-1,v[2]*-1],dtype=float)
+        # w_dummy = np.array([w[0]*-1,w[1]*-1,w[2]*-1],dtype=float)
+        # theta_needed = np.array([w_dummy[0]*t,w_dummy[1]*t,w_dummy[2]*t],dtype=float)
+        # x_new1 = (v_dummy / w_dummy) * math.sin(theta) + (v_dummy / w_dummy) * math.sin(theta + theta_needed )
+        x_new = x + ((v / w) * math.sin(theta) + (v / w) * math.sin(theta + w * t))
+        # x_new = x + np.matmul(np.divide(np.matmul([-1],v),w),[math.sin(theta)]) + np.matmul(np.divide(v,w),[math.sin(theta + w * t)])
         y_new = y + ((v / w) * math.cos(theta) - (v / w) * math.cos(theta + w * t))
         theta_new = theta + w * t
-
-        self.mu[index] = [x_new, y_new, theta_new]
+        print(self.mu[index].shape)
+        self.mu[index,0,0] = x_new
+        self.mu[index,1,0] = y_new
+        self.mu[index,2,0] = theta_new
+        # self.mu[index] = [x_new, y_new, theta_new]
 
         # partial derivative?? for V matrix
         V = np.matrix([
@@ -200,30 +214,46 @@ class Prob_Map:
             [0, 1, (v * (math.sin(theta + w * t) - v * math.sin(theta))) / w],
             [0, 0, 1],
         ])
-        self.sigma[index] = np.matmul(np.matmul(G, self.sigma[index]), np.transpose(G)) + np.matmul(
+        self.sigma[index,:,:] = np.matmul(np.matmul(G, self.sigma[index,:,:]), np.transpose(G)) + np.matmul(
             np.matmul(V, M), np.transpose(V)
         )
+        print(index)
+        print(self.mu[index,0,0])
 
     def slam_correction(self, index, reading, reading_angle):
-        Q_t = 0.1 * np.identity(3)
+        Q_t = 2 * np.identity(2)
         reading_angle = normalize_angle(reading_angle)
-        new_mu_x = self.mu[index][0] + reading * math.cos(reading_angle + self.mu[index][2])
-        new_mu_y = self.mu[index][1] + reading * math.sin(reading_angle + self.mu[index][2])
-        S = np.matrix([[new_mu_x - self.mu[index][0]], [new_mu_y - self.mu[index][0]]])
-        q = np.matmul(S.T, S)
-        z_t = np.matrix([[math.sqrt(q)], [math.atan2(S[1], S[0]) - self.mu[index][2]]])
+        print(self.mu[index,0,0])
+        new_mu_x = self.mu[index,0,0] + reading * math.cos(reading_angle + self.mu[index,2,0])
+        new_mu_y = self.mu[index,1,0] + reading * math.sin(reading_angle + self.mu[index,2,0])
+        S = np.array([[new_mu_x - self.mu[index,0,0]], [new_mu_y - self.mu[index,0,0]]])
+        print(S)
+        # q = np.matmul(S.T, S)
+        q=S.T.dot(S)
+        z_t = np.matrix([[math.sqrt(q)], [math.atan2(S[1], S[0]) - self.mu[index,2,0]]])
         # TODO: Add H.
         # H Weird 2x5 matrix
-        H = np.ones(2, 3)
-        S_t = np.matmul(np.matmul(H, self.sigma[index]), H.T) + Q_t
-        K_t = np.matmul(self.sigma[index], H.T, np.linalg.inv(S_t))
+        # H = np.ones(2, 3)
+        # delta_x=self.mu[index][0] - self.mu[0][0]
+        # delta_y=self.mu[index][1] - self.mu[0][1]
+        delta_x = 0.2
+        delta_y = 0.3
+        H = np.matrix([[-1*math.sqrt(q)*delta_x,-1*math.sqrt(q)*delta_y,0],[delta_y, -1*delta_x,-1*q]],dtype=float)
+        #Dummy H
+        S_t = np.matmul(np.matmul(H, self.sigma[index,:,:]), H.T) + Q_t
+        print("S_t")
+        print(np.linalg.det(S_t))
+        K_t = np.matmul(np.matmul(self.sigma[index,:,:], H.T), np.linalg.inv(S_t))
         # TODO: Fix z hat/expected.
         z_expected = np.atleast_2d([[reading], [normalize_angle(reading_angle)]])
         z_error = z_t - z_expected
-        self.mu[index] += np.matmul(K_t, z_error)
+        print(K_t.shape)
+        print(z_error.shape)
+        # print(self.mu[index].shape)
+        self.mu[index,:] += np.matmul(K_t, z_error)
         self.weight[index] = (np.linalg.norm(2 * np.pi * S_t) ** 0.5) * np.exp(-0.5 * np.matmul(np.matmul(np.atleast_2d(z_error).T, np.linalg.inv(S_t)), z_error))
-        if self.weight < self.best_weight:
-            self.best_weight = self.weight
+        if self.weight[index] < self.best_weight:
+            self.best_weight = self.weight[index]
             self.best_weight_index = index
 
     # flag=0
@@ -280,14 +310,20 @@ class Prob_Map:
                 
                 v = msg.twist.twist.linear
                 w = msg.twist.twist.angular
-                t = msg.header.stamp - self.last_time_stamp
-                self.last_time_stamp = msg.header.stamp
+                t = msg.header.stamp.secs - self.last_time_stamp
+                self.last_time_stamp = msg.header.stamp.secs
+                #So you want the v and w being passed to the algorithm to be the magnitudes of these vectors?
                 # TODO: Fix passing proper x, y, and t and in correction need to pass proper angle.
-                self.slam_prediction(i, v, w, t)
+                v_slampredict = np.array([v.x,v.y,v.z],dtype=float)
+                w_slampredict = np.array([w.x,w.y,w.z],dtype=float)
+                v_slam = np.sqrt(v_slampredict[0]**2+v_slampredict[1]**2+v_slampredict[2]**2)
+                w_slam = np.sqrt(w_slampredict[0]**2+w_slampredict[1]**2+w_slampredict[2]**2)
+                self.slam_prediction(i, v_slam, w_slam, t)
                 self.slam_correction(i, r, i * msg.angle_increment)
                 x = self.mu[self.best_weight_index][0]
                 y = self.mu[self.best_weight_index][1]
                 angle = -self.mu[self.best_weight_index][2] + i * msg.angle_increment + math.pi / 2
+                print(self.best_weight_index)
                 x_map0 = int(y / map_resolution + map_height / 2)
                 y_map0 = int(x / map_resolution + map_width / 2)
                 dist_x = -y + r * math.cos(angle)
